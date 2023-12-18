@@ -26,7 +26,13 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-app.post('api/send-email', (req, res) => {
+app.get('/', (req, res) => {
+  const filePath = path.join(__dirname, 'app', 'index.html');
+  res.sendFile(filePath);
+});
+
+
+app.post('/api/send-email', (req, res) => {
   const { email, subject, text } = req.body;
 
   if (!email || (!Array.isArray(email) && typeof email !== 'string')) {
@@ -49,10 +55,6 @@ app.post('api/send-email', (req, res) => {
   });
 });
 
-app.get('/', (req, res) => {
-  const filePath = path.join(__dirname, 'app', 'index.html');
-  res.sendFile(filePath);
-});
 
 app.listen(PORT, () => {
   console.log(`[+] Server running on port ${PORT}`);
