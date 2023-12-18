@@ -62,4 +62,4 @@ Before you begin, ensure you have met the following requirements:
 To start the server, run:
 
 ```bash
-npm start
+nodemon app.js
