@@ -26,7 +26,7 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-app.post('/send-email', (req, res) => {
+app.post('api/send-email', (req, res) => {
   const { email, subject, text } = req.body;
 
   if (!email || (!Array.isArray(email) && typeof email !== 'string')) {
