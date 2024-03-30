@@ -19,7 +19,7 @@ app.use(morgan('dev'));
 
 // Nodemailer configuration
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  service: 'mail.privateemail.com',
   auth: {
     user: process.env.EMAIL,
     pass: process.env.PASSWORD
