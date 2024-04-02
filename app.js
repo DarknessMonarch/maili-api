@@ -6,10 +6,9 @@ const morgan = require("morgan");
 const bodyParser = require("body-parser");
 const nodemailer = require('nodemailer');
 
-dotenv.config();
-
+dotenv.config(); 
 const app = express();
-const PORT = process.env.PORT || 3002; 
+const PORT = process.env.PORT || 4000;
 
 app.use(express.json());
 app.use(cors());
@@ -17,31 +16,30 @@ app.use(express.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(morgan('dev'));
 
-// Nodemailer configuration
+
 const transporter = nodemailer.createTransport({
-  service:process.env.EMAIL_HOST,
+  host: process.env.EMAIL_HOST,
   port: 465,
   auth: {
-    user: process.env.EMAIL,
-    pass: process.env.PASSWORD
-  }
+    user: process.env.EMAIL_FROM,
+    pass: process.env.EMAIL_PASSWORD,
+  },
 });
+
 
 app.get('/', (req, res) => {
   const filePath = path.join(__dirname, 'app', 'index.html');
   res.sendFile(filePath);
 });
 
-
 app.post('/api/send-email', (req, res) => {
   const { email, subject, text } = req.body;
-
-  if (!email || (!Array.isArray(email) && typeof email !== 'string')) {
+  if (!email || (Array.isArray(email) && email.length === 0) || (typeof email === 'string' && email.trim().length === 0)) {
     return res.status(400).json({ error: 'Invalid or missing recipient email addresses.' });
   }
 
   const mailOptions = {
-    from: process.env.EMAIL,
+    from: process.env.EMAIL_FROM,
     subject: subject,
     text: text
   };
@@ -55,7 +53,6 @@ app.post('/api/send-email', (req, res) => {
     res.status(200).json({ message: 'Email sent', response: info.response });
   });
 });
-
 
 app.listen(PORT, () => {
   console.log(`[+] Server running on port ${PORT}`);
