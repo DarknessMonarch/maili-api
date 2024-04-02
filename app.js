@@ -9,7 +9,7 @@ const nodemailer = require('nodemailer');
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000; 
+const PORT = process.env.PORT || 3002; 
 
 app.use(express.json());
 app.use(cors());
@@ -19,7 +19,8 @@ app.use(morgan('dev'));
 
 // Nodemailer configuration
 const transporter = nodemailer.createTransport({
-  service: 'mail.privateemail.com',
+  service:process.env.EMAIL_HOST,
+  port: 465,
   auth: {
     user: process.env.EMAIL,
     pass: process.env.PASSWORD
