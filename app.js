@@ -5,8 +5,10 @@ const dotenv = require('dotenv');
 const morgan = require("morgan");
 const bodyParser = require("body-parser");
 const nodemailer = require('nodemailer');
+const fs = require('fs');
 
-dotenv.config(); 
+dotenv.config();
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 
@@ -16,44 +18,56 @@ app.use(express.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(morgan('dev'));
 
-
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: 465,
-  auth: {
-    user: process.env.EMAIL_FROM,
-    pass: process.env.EMAIL_PASSWORD,
-  },
+    host: process.env.EMAIL_HOST,
+    port: 465,
+    auth: {
+        user: process.env.EMAIL_FROM,
+        pass: process.env.EMAIL_PASSWORD,
+    },
 });
 
-
 app.get('/', (req, res) => {
-  const filePath = path.join(__dirname, 'app', 'index.html');
-  res.sendFile(filePath);
+    const filePath = path.join(__dirname, 'app', 'index.html');
+    res.sendFile(filePath);
 });
 
 app.post('/api/send-email', (req, res) => {
-  const { email, subject, text } = req.body;
-  if (!email || (Array.isArray(email) && email.length === 0) || (typeof email === 'string' && email.trim().length === 0)) {
-    return res.status(400).json({ error: 'Invalid or missing recipient email addresses.' });
-  }
+    const { email, subject, text } = req.body;
 
-  const mailOptions = {
-    from: process.env.EMAIL_FROM,
-    subject: subject,
-    text: text
-  };
-
-  mailOptions.bcc = Array.isArray(email) ? email.join(', ') : email;
-
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      return res.status(500).json({ error: error.toString() });
+    if (!email || (Array.isArray(email) && email.length === 0) || (typeof email === 'string' && email.trim().length === 0)) {
+        return res.status(400).json({ error: 'Invalid or missing recipient email addresses.' });
     }
-    res.status(200).json({ message: 'Email sent', response: info.response });
-  });
+
+    let client;
+    if (Array.isArray(email)) {
+      client = email[0].split('@')[0];
+    } else {
+      client = email.split('@')[0];
+    }
+
+    const templatePath = path.join(__dirname, '/app/template.html');
+    let htmlTemplate = fs.readFileSync(templatePath, 'utf-8');
+
+    htmlTemplate = htmlTemplate.replace('{{client}}', client);
+    htmlTemplate = htmlTemplate.replace('{{content}}', text);
+
+    const mailOptions = {
+        from: process.env.EMAIL_FROM,
+        subject: subject,
+        html: htmlTemplate
+    };
+
+    mailOptions.bcc = Array.isArray(email) ? email.join(', ') : email;
+
+    transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+            return res.status(500).json({ error: error.toString() });
+        }
+        res.status(200).json({ message: 'Email sent', response: info.response });
+    });
 });
 
 app.listen(PORT, () => {
-  console.log(`[+] Server running on port ${PORT}`);
+    console.log(`[+] Server running on port ${PORT}`);
 });
