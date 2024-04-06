@@ -21,7 +21,7 @@ app.use(morgan('dev'));
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: 465,
-  timeout: 60000, // Increase the timeout to 60 seconds
+  timeout: 60000,
   auth: {
     user: process.env.EMAIL_FROM,
     pass: process.env.EMAIL_PASSWORD,
@@ -36,9 +36,8 @@ app.get('/', (req, res) => {
 async function sendEmails(email, subject, text) {
   const templatePath = path.join(__dirname, '/app/template.html');
   const htmlTemplate = fs.readFileSync(templatePath, 'utf-8');
-  const batchSize = 25;
-  const batchDelay = 1000; // 1 second delay between batches
-
+  const batchSize = 10;
+  const batchDelay = 10000; 
   const successfulEmails = [];
 
   if (Array.isArray(email)) {
@@ -51,7 +50,7 @@ async function sendEmails(email, subject, text) {
           from: process.env.EMAIL_FROM,
           to: recipient,
           subject,
-          html: personalizedTemplate
+          html: personalizedTemplate,
         };
         return transporter.sendMail(mailOptions);
       });
@@ -67,7 +66,7 @@ async function sendEmails(email, subject, text) {
       from: process.env.EMAIL_FROM,
       to: email,
       subject,
-      html: personalizedTemplate
+      html: personalizedTemplate,
     };
     const result = await transporter.sendMail(mailOptions);
     successfulEmails.push(result.accepted[0]);
@@ -78,32 +77,17 @@ async function sendEmails(email, subject, text) {
 
 app.post('/api/send-email', async (req, res) => {
   const { email, subject, text } = req.body;
-
   if (!email || (Array.isArray(email) && email.length === 0) || (typeof email === 'string' && email.trim().length === 0)) {
     return res.status(400).json({ error: 'Invalid or missing recipient email addresses.' });
   }
-
-  let retryDelay = 5000; // Initial delay of 5 seconds
-  let retryCount = 0;
-  const maxRetries = 5; // Maximum number of retries
 
   try {
     const successfulEmails = await sendEmails(email, subject, text);
     console.log('Successfully sent emails to:', successfulEmails);
     res.status(200).json({ message: 'Emails sent', successfulEmails });
   } catch (error) {
-    if (error.responseCode === 421 && retryCount < maxRetries) {
-      console.log(`Retrying email sending in ${retryDelay / 1000} seconds...`);
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
-      retryCount++;
-      retryDelay *= 2; // Exponential backoff
-      const successfulEmails = await sendEmails(email, subject, text); // Recursive call to retry
-      console.log('Successfully sent emails to:', successfulEmails);
-      res.status(200).json({ message: 'Emails sent', successfulEmails });
-    } else {
-      console.error('Error sending emails:', error);
-      res.status(500).json({ error: error.toString() });
-    }
+    console.error('Error sending emails:', error);
+    res.status(500).json({ error: error.toString() });
   }
 });
 
