@@ -33,6 +33,49 @@ app.get('/', (req, res) => {
   res.sendFile(filePath);
 });
 
+async function sendEmails(email, subject, text) {
+  const templatePath = path.join(__dirname, '/app/template.html');
+  const htmlTemplate = fs.readFileSync(templatePath, 'utf-8');
+  const batchSize = 25;
+  const batchDelay = 1000; // 1 second delay between batches
+
+  const successfulEmails = [];
+
+  if (Array.isArray(email)) {
+    for (let i = 0; i < email.length; i += batchSize) {
+      const batchEmails = email.slice(i, i + batchSize);
+      const promises = batchEmails.map(recipient => {
+        const client = recipient.split('@')[0];
+        const personalizedTemplate = htmlTemplate.replace('{{client}}', client).replace('{{content}}', text);
+        const mailOptions = {
+          from: process.env.EMAIL_FROM,
+          to: recipient,
+          subject,
+          html: personalizedTemplate
+        };
+        return transporter.sendMail(mailOptions);
+      });
+
+      const results = await Promise.all(promises);
+      successfulEmails.push(...results.filter(result => result.accepted.length > 0).map(result => result.accepted[0]));
+      await new Promise(resolve => setTimeout(resolve, batchDelay));
+    }
+  } else {
+    const client = email.split('@')[0];
+    const personalizedTemplate = htmlTemplate.replace('{{client}}', client).replace('{{content}}', text);
+    const mailOptions = {
+      from: process.env.EMAIL_FROM,
+      to: email,
+      subject,
+      html: personalizedTemplate
+    };
+    const result = await transporter.sendMail(mailOptions);
+    successfulEmails.push(result.accepted[0]);
+  }
+
+  return successfulEmails;
+}
+
 app.post('/api/send-email', async (req, res) => {
   const { email, subject, text } = req.body;
 
@@ -40,47 +83,27 @@ app.post('/api/send-email', async (req, res) => {
     return res.status(400).json({ error: 'Invalid or missing recipient email addresses.' });
   }
 
-  const templatePath = path.join(__dirname, '/app/template.html');
-  const htmlTemplate = fs.readFileSync(templatePath, 'utf-8');
-  const batchSize = 50;
+  let retryDelay = 5000; // Initial delay of 5 seconds
+  let retryCount = 0;
+  const maxRetries = 5; // Maximum number of retries
 
   try {
-    if (Array.isArray(email)) {
-      const successfulEmails = [];
-      for (let i = 0; i < email.length; i += batchSize) {
-        const batchEmails = email.slice(i, i + batchSize);
-        const promises = batchEmails.map(recipient => {
-          const client = recipient.split('@')[0];
-          const personalizedTemplate = htmlTemplate.replace('{{client}}', client).replace('{{content}}', text);
-          const mailOptions = {
-            from: process.env.EMAIL_FROM,
-            to: recipient,
-            subject,
-            html: personalizedTemplate
-          };
-          return transporter.sendMail(mailOptions);
-        });
-        const results = await Promise.all(promises);
-        successfulEmails.push(...results.filter(result => result.accepted.length > 0).map(result => result.accepted[0]));
-      }
+    const successfulEmails = await sendEmails(email, subject, text);
+    console.log('Successfully sent emails to:', successfulEmails);
+    res.status(200).json({ message: 'Emails sent', successfulEmails });
+  } catch (error) {
+    if (error.responseCode === 421 && retryCount < maxRetries) {
+      console.log(`Retrying email sending in ${retryDelay / 1000} seconds...`);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      retryCount++;
+      retryDelay *= 2; // Exponential backoff
+      const successfulEmails = await sendEmails(email, subject, text); // Recursive call to retry
       console.log('Successfully sent emails to:', successfulEmails);
       res.status(200).json({ message: 'Emails sent', successfulEmails });
     } else {
-      const client = email.split('@')[0];
-      const personalizedTemplate = htmlTemplate.replace('{{client}}', client).replace('{{content}}', text);
-      const mailOptions = {
-        from: process.env.EMAIL_FROM,
-        to: email,
-        subject,
-        html: personalizedTemplate
-      };
-      const result = await transporter.sendMail(mailOptions);
-      console.log('Successfully sent email to:', result.accepted[0]);
-      res.status(200).json({ message: 'Email sent', successfulEmail: result.accepted[0] });
+      console.error('Error sending emails:', error);
+      res.status(500).json({ error: error.toString() });
     }
-  } catch (error) {
-    console.error('Error sending emails:', error);
-    res.status(500).json({ error: error.toString() });
   }
 });
 
