@@ -21,6 +21,7 @@ app.use(morgan('dev'));
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: 465,
+  timeout: 60000, // Increase the timeout to 60 seconds
   auth: {
     user: process.env.EMAIL_FROM,
     pass: process.env.EMAIL_PASSWORD,
@@ -32,7 +33,7 @@ app.get('/', (req, res) => {
   res.sendFile(filePath);
 });
 
-app.post('/api/send-email', (req, res) => {
+app.post('/api/send-email', async (req, res) => {
   const { email, subject, text } = req.body;
 
   if (!email || (Array.isArray(email) && email.length === 0) || (typeof email === 'string' && email.trim().length === 0)) {
@@ -41,47 +42,44 @@ app.post('/api/send-email', (req, res) => {
 
   const templatePath = path.join(__dirname, '/app/template.html');
   const htmlTemplate = fs.readFileSync(templatePath, 'utf-8');
+  const batchSize = 50;
 
-  if (Array.isArray(email)) {
-    const promises = email.map(recipient => {
-      const client = recipient.split('@')[0];
+  try {
+    if (Array.isArray(email)) {
+      for (let i = 0; i < email.length; i += batchSize) {
+        const batchEmails = email.slice(i, i + batchSize);
+        const promises = batchEmails.map(recipient => {
+          const client = recipient.split('@')[0];
+          const personalizedTemplate = htmlTemplate.replace('{{client}}', client).replace('{{content}}', text);
+          const mailOptions = {
+            from: process.env.EMAIL_FROM,
+            to: recipient,
+            subject,
+            html: personalizedTemplate
+          };
+          return transporter.sendMail(mailOptions);
+        });
+        await Promise.all(promises);
+      }
+      res.status(200).json({ message: 'Emails sent' });
+    } else {
+      const client = email.split('@')[0];
       const personalizedTemplate = htmlTemplate.replace('{{client}}', client).replace('{{content}}', text);
       const mailOptions = {
         from: process.env.EMAIL_FROM,
-        to: recipient,
+        to: email,
         subject,
         html: personalizedTemplate
       };
-
-      return transporter.sendMail(mailOptions);
-    });
-
-    Promise.all(promises)
-      .then(results => {
-        res.status(200).json({ message: 'Emails sent', responses: results.map(result => result.response) });
-      })
-      .catch(error => {
-        res.status(500).json({ error: error.toString() });
-      });
-  } else {
-    const client = email.split('@')[0];
-    const personalizedTemplate = htmlTemplate.replace('{{client}}', client).replace('{{content}}', text);
-    const mailOptions = {
-      from: process.env.EMAIL_FROM,
-      to: email,
-      subject,
-      html: personalizedTemplate
-    };
-
-    transporter.sendMail(mailOptions, (error, info) => {
-      if (error) {
-        return res.status(500).json({ error: error.toString() });
-      }
-      res.status(200).json({ message: 'Email sent', response: info.response });
-    });
+      await transporter.sendMail(mailOptions);
+      res.status(200).json({ message: 'Email sent' });
+    }
+  } catch (error) {
+    console.error('Error sending emails:', error);
+    res.status(500).json({ error: error.toString() });
   }
 });
 
 app.listen(PORT, () => {
   console.log(`[+] Server running on port ${PORT}`);
-});
+}); 
