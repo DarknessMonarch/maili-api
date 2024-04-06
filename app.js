@@ -46,6 +46,7 @@ app.post('/api/send-email', async (req, res) => {
 
   try {
     if (Array.isArray(email)) {
+      const successfulEmails = [];
       for (let i = 0; i < email.length; i += batchSize) {
         const batchEmails = email.slice(i, i + batchSize);
         const promises = batchEmails.map(recipient => {
@@ -59,9 +60,11 @@ app.post('/api/send-email', async (req, res) => {
           };
           return transporter.sendMail(mailOptions);
         });
-        await Promise.all(promises);
+        const results = await Promise.all(promises);
+        successfulEmails.push(...results.filter(result => result.accepted.length > 0).map(result => result.accepted[0]));
       }
-      res.status(200).json({ message: 'Emails sent' });
+      console.log('Successfully sent emails to:', successfulEmails);
+      res.status(200).json({ message: 'Emails sent', successfulEmails });
     } else {
       const client = email.split('@')[0];
       const personalizedTemplate = htmlTemplate.replace('{{client}}', client).replace('{{content}}', text);
@@ -71,8 +74,9 @@ app.post('/api/send-email', async (req, res) => {
         subject,
         html: personalizedTemplate
       };
-      await transporter.sendMail(mailOptions);
-      res.status(200).json({ message: 'Email sent' });
+      const result = await transporter.sendMail(mailOptions);
+      console.log('Successfully sent email to:', result.accepted[0]);
+      res.status(200).json({ message: 'Email sent', successfulEmail: result.accepted[0] });
     }
   } catch (error) {
     console.error('Error sending emails:', error);
@@ -82,4 +86,4 @@ app.post('/api/send-email', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`[+] Server running on port ${PORT}`);
-}); 
+});
